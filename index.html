@@ -265,6 +265,78 @@ body {
   font-weight: 800;
   font-size: 14px;
 }
+.service-card.service-unavailable {
+  cursor: not-allowed;
+  pointer-events: none;
+  opacity: 0.45;
+  background: var(--gray);
+}
+.service-card.service-unavailable::after {
+  content: 'Unavailable';
+  position: absolute;
+  top: 8px; right: 10px;
+  color: var(--mid);
+  font-weight: 700;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+.avail-section { margin-bottom: 24px; }
+.avail-section-title {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-weight: 800;
+  font-size: 15px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--dark);
+  border-bottom: 2px solid var(--gray2);
+  padding-bottom: 6px;
+  margin-bottom: 10px;
+}
+.avail-group { margin-bottom: 14px; }
+.avail-group-label {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-weight: 700;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--slate);
+  margin: 10px 0 4px;
+}
+.avail-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--gray2);
+  gap: 10px;
+}
+.avail-row-name { font-size: 13px; color: var(--dark); }
+.avail-tag {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  color: var(--slate);
+  border: 1px solid var(--gray2);
+  border-radius: 4px;
+  padding: 1px 5px;
+  margin-left: 4px;
+}
+.avail-toggle {
+  border: none;
+  border-radius: 5px;
+  padding: 6px 14px;
+  font-family: 'Oswald', sans-serif;
+  font-weight: 700;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  cursor: pointer;
+  min-width: 96px;
+}
+.avail-toggle.on { background: var(--green, #2e7d32); color: var(--white); }
+.avail-toggle.off { background: var(--gray2); color: var(--mid); }
 .service-name {
   font-family: 'Oswald', sans-serif;
   font-weight: 800;
@@ -1471,28 +1543,37 @@ textarea { resize: vertical; min-height: 70px; }
     </div>
   </div>
   <div class="dashboard-filters">
-    <button class="filter-btn active" onclick="filterOrders('all',this)">All Orders</button>
-    <button class="filter-btn" onclick="filterOrders('pending',this)">Pending</button>
-    <button class="filter-btn" onclick="filterOrders('in-progress',this)">In Progress</button>
-    <button class="filter-btn" onclick="filterOrders('ready',this)">Ready for Pickup</button>
-    <button class="filter-btn" onclick="filterOrders('completed',this)">Completed</button>
+    <button class="filter-btn active" id="staff-tab-orders" onclick="showStaffTab('orders')">Orders</button>
+    <button class="filter-btn" id="staff-tab-availability" onclick="showStaffTab('availability')">Manage Availability</button>
   </div>
-  <div class="dashboard-body">
-    <table class="order-table">
-      <thead>
-        <tr>
-          <th>Order #</th>
-          <th>Customer</th>
-          <th>Services</th>
-          <th>Time</th>
-          <th>Status</th>
-          <th>Actions</th>
-        </tr>
-      </thead>
-      <tbody id="orders-tbody">
-        <tr><td colspan="6"><div class="empty-state"><h3>No Orders Yet</h3><p>Customer orders will appear here</p></div></td></tr>
-      </tbody>
-    </table>
+  <div id="staff-orders-view">
+    <div class="dashboard-filters">
+      <button class="filter-btn active" onclick="filterOrders('all',this)">All Orders</button>
+      <button class="filter-btn" onclick="filterOrders('pending',this)">Pending</button>
+      <button class="filter-btn" onclick="filterOrders('in-progress',this)">In Progress</button>
+      <button class="filter-btn" onclick="filterOrders('ready',this)">Ready for Pickup</button>
+      <button class="filter-btn" onclick="filterOrders('completed',this)">Completed</button>
+    </div>
+    <div class="dashboard-body">
+      <table class="order-table">
+        <thead>
+          <tr>
+            <th>Order #</th>
+            <th>Customer</th>
+            <th>Services</th>
+            <th>Time</th>
+            <th>Status</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="orders-tbody">
+          <tr><td colspan="6"><div class="empty-state"><h3>No Orders Yet</h3><p>Customer orders will appear here</p></div></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <div id="staff-availability-view" style="display:none">
+    <div class="dashboard-body" id="availability-body"></div>
   </div>
 </div>
 
@@ -1804,6 +1885,147 @@ const GRIP_MODELS = [
     ]},
 ];
 
+// =================== STAFF AVAILABILITY TOGGLE ===================
+// Lets staff mark grips or services unavailable from the PIN-gated dashboard
+// tab, without a developer touching code. State persists in localStorage.
+const SERVICE_CATALOG = [
+  { id: 'regrip',       name: 'Re-Grip' },
+  { id: 'savegrip',     name: 'Save Grip' },
+  { id: 'loftlie',      name: 'Loft + Lie Adjustment' },
+  { id: 'shorten',      name: 'Shorten Length' },
+  { id: 'pullshaft',    name: 'Pulling Shaft (No Reshaft)' },
+  { id: 'resetiron',    name: 'Re-Set Iron Head' },
+  { id: 'reshaft',      name: 'Re-Shaft (Woods)' },
+  { id: 'rattlebasic',  name: 'Rattle in Head – Basic' },
+  { id: 'rattlehotmelt',name: 'Rattle in Head – Hot Melt' },
+  { id: 'swapshaft',    name: 'Swapping Shafts' },
+  { id: 'lengthen',     name: 'Lengthen Club' },
+  { id: 'tipinstall',   name: 'Tip Install' },
+  { id: 'hotmelt',      name: 'Hot Melt' },
+  { id: 'resetferrule', name: 'Re-Set Ferrule' },
+  { id: 'stamping',     name: 'Stamping (9 chars)' },
+  { id: 'paintfill',    name: 'Paint Fill' },
+  { id: 'tourswap',     name: 'Tour Shaft Swap (Iron Set)' },
+  { id: 'tourstamp',    name: 'Tour Stamping' },
+  { id: 'tourpaint',    name: 'Tour Paint Fill' },
+  { id: 'tourrebuild',  name: 'Tour Rebuild' },
+  { id: 'customgrind',  name: 'Custom Grinds' },
+  { id: 'refsole',      name: 'Refurbishment – Sole' },
+  { id: 'refface',      name: 'Refurbishment – Face' },
+];
+
+const UNAVAILABLE_GRIPS_KEY = 'bsk_unavailable_grips';
+const UNAVAILABLE_SERVICES_KEY = 'bsk_unavailable_services';
+
+function _loadUnavailableSet(key) {
+  try { return new Set(JSON.parse(localStorage.getItem(key) || '[]')); }
+  catch { return new Set(); }
+}
+let UNAVAILABLE_GRIPS = _loadUnavailableSet(UNAVAILABLE_GRIPS_KEY);
+let UNAVAILABLE_SERVICES = _loadUnavailableSet(UNAVAILABLE_SERVICES_KEY);
+
+function saveUnavailableGrips() {
+  localStorage.setItem(UNAVAILABLE_GRIPS_KEY, JSON.stringify([...UNAVAILABLE_GRIPS]));
+}
+function saveUnavailableServices() {
+  localStorage.setItem(UNAVAILABLE_SERVICES_KEY, JSON.stringify([...UNAVAILABLE_SERVICES]));
+}
+
+function toggleGripAvailability(modelId) {
+  if (UNAVAILABLE_GRIPS.has(modelId)) UNAVAILABLE_GRIPS.delete(modelId);
+  else UNAVAILABLE_GRIPS.add(modelId);
+  saveUnavailableGrips();
+  renderAvailabilityPanel();
+}
+
+function toggleServiceAvailability(serviceId) {
+  if (UNAVAILABLE_SERVICES.has(serviceId)) UNAVAILABLE_SERVICES.delete(serviceId);
+  else UNAVAILABLE_SERVICES.add(serviceId);
+  saveUnavailableServices();
+  applyServiceAvailabilityUI();
+  renderAvailabilityPanel();
+}
+
+// Reflects unavailable services onto the customer-facing service cards:
+// greys them out, blocks selection, and drops them from any in-progress order.
+function applyServiceAvailabilityUI() {
+  SERVICE_CATALOG.forEach(s => {
+    const card = document.getElementById('card-' + s.id);
+    if (!card) return;
+    if (UNAVAILABLE_SERVICES.has(s.id)) {
+      card.classList.add('service-unavailable');
+      if (SERVICES[s.id]) { delete SERVICES[s.id]; card.classList.remove('selected'); }
+    } else {
+      card.classList.remove('service-unavailable');
+    }
+  });
+  const btn = document.getElementById('btn-next-details');
+  if (btn) btn.disabled = Object.keys(SERVICES).length === 0;
+}
+
+let availabilityUnlocked = false;
+
+function showStaffTab(tab) {
+  if (tab === 'availability' && !availabilityUnlocked) {
+    _overrideContext = 'availability';
+    document.getElementById('override-overlay').classList.remove('hidden');
+    document.getElementById('override-pin-input').value = '';
+    document.getElementById('override-error').style.display = 'none';
+    setTimeout(() => document.getElementById('override-pin-input').focus(), 100);
+    return;
+  }
+  const ordersBtn = document.getElementById('staff-tab-orders');
+  const availBtn  = document.getElementById('staff-tab-availability');
+  if (ordersBtn) ordersBtn.classList.toggle('active', tab === 'orders');
+  if (availBtn)  availBtn.classList.toggle('active', tab === 'availability');
+  const ordersView = document.getElementById('staff-orders-view');
+  const availView  = document.getElementById('staff-availability-view');
+  if (ordersView) ordersView.style.display = tab === 'orders' ? 'block' : 'none';
+  if (availView)  availView.style.display  = tab === 'availability' ? 'block' : 'none';
+  if (tab === 'availability') renderAvailabilityPanel();
+}
+
+function renderAvailabilityPanel() {
+  const el = document.getElementById('availability-body');
+  if (!el) return;
+
+  const serviceRows = SERVICE_CATALOG.map(s => {
+    const unavailable = UNAVAILABLE_SERVICES.has(s.id);
+    return `<div class="avail-row">
+      <div class="avail-row-name">${s.name}</div>
+      <button class="avail-toggle ${unavailable ? 'off' : 'on'}" onclick="toggleServiceAvailability('${s.id}')">${unavailable ? 'Unavailable' : 'Available'}</button>
+    </div>`;
+  }).join('');
+
+  const gripsByBrand = {};
+  GRIP_MODELS.forEach(m => {
+    if (!gripsByBrand[m.brand]) gripsByBrand[m.brand] = [];
+    gripsByBrand[m.brand].push(m);
+  });
+
+  const gripsHtml = Object.entries(gripsByBrand).map(([brand, models]) => {
+    const rows = models.map(m => {
+      const unavailable = UNAVAILABLE_GRIPS.has(m.id);
+      const putterTag = m.category === 'putter' ? '<span class="avail-tag">Putter</span>' : '';
+      return `<div class="avail-row">
+        <div class="avail-row-name">${m.name} ${putterTag}</div>
+        <button class="avail-toggle ${unavailable ? 'off' : 'on'}" onclick="toggleGripAvailability('${m.id}')">${unavailable ? 'Unavailable' : 'Available'}</button>
+      </div>`;
+    }).join('');
+    return `<div class="avail-group"><div class="avail-group-label">${brand}</div>${rows}</div>`;
+  }).join('');
+
+  el.innerHTML = `
+    <div class="avail-section">
+      <h3 class="avail-section-title">Services</h3>
+      ${serviceRows}
+    </div>
+    <div class="avail-section">
+      <h3 class="avail-section-title">Grips</h3>
+      ${gripsHtml}
+    </div>`;
+}
+
 // Flat GRIPS array derived from GRIP_MODELS (used for legacy receipt/order lookup by SKU)
 const GRIPS = GRIP_MODELS.flatMap(m => m.sizes.map(s => ({
   name: `${m.name} ${s.label}`, sku: s.sku, price: s.price, modelId: m.id
@@ -2052,6 +2274,7 @@ function setStep(n) {
 
 // ====================== SERVICE TOGGLE ======================
 function toggleService(id, name, price, tier, flag) {
+  if (UNAVAILABLE_SERVICES.has(id)) return;
   const card = document.getElementById('card-' + id);
   if (SERVICES[id]) {
     delete SERVICES[id];
@@ -2959,8 +3182,9 @@ function renderGripCards(query) {
   const q = (query || '').toLowerCase();
   const container = document.getElementById('grip-cards-container');
 
-  // Filter models by putter category (per-row club type), then by name or any SKU
+  // Filter models by putter category (per-row club type), staff availability, then by name or any SKU
   const filtered = GRIP_MODELS.filter(m => {
+    if (UNAVAILABLE_GRIPS.has(m.id)) return false;
     const isPutterModel = m.category === 'putter';
     if (_pickerIsPutter && !isPutterModel) return false;
     if (!_pickerIsPutter && isPutterModel) return false;
@@ -3963,6 +4187,12 @@ function applyOverride() {
     if (btn) { btn.textContent = '✓ Waived'; btn.style.background = 'var(--green)'; btn.disabled = true; }
     showToast('Override applied — Grip install charge waived');
 
+  } else if (context === 'availability') {
+    // ---- MANAGE AVAILABILITY ACCESS ----
+    availabilityUnlocked = true;
+    showStaffTab('availability');
+    showToast('Availability panel unlocked');
+
   } else {
     // ---- LOFT + LIE OVERRIDE ----
     loftLieOverrideApplied = true;
@@ -4158,6 +4388,10 @@ function updateShortenGripGrandTotal() {
   if (SERVICES.shorten) { SERVICES.shorten.total = shortenBase + total; }
   updateFinalTotal();
 }
+
+// Reflect any previously-saved staff availability settings onto the
+// customer-facing service cards as soon as the page loads.
+applyServiceAvailabilityUI();
 </script>
 </body>
 </html>
