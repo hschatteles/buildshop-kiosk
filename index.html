@@ -281,6 +281,13 @@ body {
   text-transform: uppercase;
   letter-spacing: 0.4px;
 }
+.fb-label { display:block; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; color:var(--mid); margin:14px 0 6px; }
+.fb-input { width:100%; padding:10px 12px; border:2px solid var(--gray2); border-radius:8px; font-size:14px; font-family:inherit; }
+.fb-submit { margin-top:18px; width:100%; background:var(--red); color:var(--white); border:none; border-radius:6px; padding:14px; font-family:'Oswald',sans-serif; font-weight:700; font-size:16px; text-transform:uppercase; letter-spacing:0.5px; cursor:pointer; }
+.fb-card { border:1px solid var(--gray2); border-radius:8px; padding:12px 14px; margin-bottom:10px; background:var(--white); }
+.fb-card-meta { font-size:12px; color:var(--mid); margin-bottom:6px; }
+.fb-card-text { font-size:14px; color:var(--dark); white-space:pre-wrap; margin-bottom:10px; }
+.fb-card-actions { display:flex; gap:6px; flex-wrap:wrap; }
 .avail-section { margin-bottom: 24px; }
 .avail-section-title {
   font-family: 'Barlow Condensed', sans-serif;
@@ -1268,6 +1275,7 @@ textarea { resize: vertical; min-height: 70px; }
   <div class="header-tabs">
     <button class="tab-btn active" onclick="showScreen('kiosk')">Customer Kiosk</button>
     <button class="tab-btn" onclick="showScreen('staff')">Staff Dashboard</button>
+    <button class="tab-btn" onclick="showScreen('feedback')">Suggestions</button>
   </div>
 </div>
 
@@ -1532,6 +1540,28 @@ textarea { resize: vertical; min-height: 70px; }
 <!-- ====================================================
      STAFF DASHBOARD
      ==================================================== -->
+<div id="screen-feedback" class="screen">
+  <div class="dashboard-header"><h2>Suggestions</h2></div>
+  <div class="dashboard-body" style="max-width:640px;margin:0 auto">
+    <p style="font-size:14px;color:var(--mid);margin-bottom:16px">Have an idea, spotted a problem, or need a grip or service added? Tell us below.</p>
+    <label class="fb-label">Your name (optional)</label>
+    <input type="text" id="fb-name" class="fb-input" maxlength="60">
+    <label class="fb-label">Store</label>
+    <select id="fb-store" class="fb-input">
+      <option value="">Select your store</option>
+      <option>Minneapolis</option><option>Minnetonka</option><option>Wilmington</option>
+      <option>Columbia</option><option>Scottsdale</option><option>Dallas</option><option>West Palm Beach</option>
+    </select>
+    <label class="fb-label">Type</label>
+    <select id="fb-type" class="fb-input">
+      <option>Idea</option><option>Problem</option><option>Grip or service request</option><option>Other</option>
+    </select>
+    <label class="fb-label">Your suggestion</label>
+    <textarea id="fb-text" class="fb-input" rows="5" maxlength="1500"></textarea>
+    <button class="fb-submit" onclick="submitSuggestion()">Submit Suggestion</button>
+  </div>
+</div>
+
 <div id="screen-staff" class="screen">
   <div class="dashboard-header">
     <h2>Build Shop — Orders</h2>
@@ -1545,6 +1575,7 @@ textarea { resize: vertical; min-height: 70px; }
   <div class="dashboard-filters">
     <button class="filter-btn active" id="staff-tab-orders" onclick="showStaffTab('orders')">Orders</button>
     <button class="filter-btn" id="staff-tab-availability" onclick="showStaffTab('availability')">Manage Availability</button>
+    <button class="filter-btn" id="staff-tab-suggestions" onclick="showStaffTab('suggestions')">Suggestions</button>
   </div>
   <div id="staff-orders-view">
     <div class="dashboard-filters">
@@ -1574,6 +1605,9 @@ textarea { resize: vertical; min-height: 70px; }
   </div>
   <div id="staff-availability-view" style="display:none">
     <div class="dashboard-body" id="availability-body"></div>
+  </div>
+  <div id="staff-suggestions-view" style="display:none">
+    <div class="dashboard-body" id="suggestions-body"></div>
   </div>
 </div>
 
@@ -1965,8 +1999,11 @@ function applyServiceAvailabilityUI() {
 
 let availabilityUnlocked = false;
 
+let _pendingStaffTab = 'availability';
+
 function showStaffTab(tab) {
-  if (tab === 'availability' && !availabilityUnlocked) {
+  if (tab !== 'orders' && !availabilityUnlocked) {
+    _pendingStaffTab = tab;
     _overrideContext = 'availability';
     document.getElementById('override-overlay').classList.remove('hidden');
     document.getElementById('override-pin-input').value = '';
@@ -1974,15 +2011,83 @@ function showStaffTab(tab) {
     setTimeout(() => document.getElementById('override-pin-input').focus(), 100);
     return;
   }
-  const ordersBtn = document.getElementById('staff-tab-orders');
-  const availBtn  = document.getElementById('staff-tab-availability');
-  if (ordersBtn) ordersBtn.classList.toggle('active', tab === 'orders');
-  if (availBtn)  availBtn.classList.toggle('active', tab === 'availability');
-  const ordersView = document.getElementById('staff-orders-view');
-  const availView  = document.getElementById('staff-availability-view');
-  if (ordersView) ordersView.style.display = tab === 'orders' ? 'block' : 'none';
-  if (availView)  availView.style.display  = tab === 'availability' ? 'block' : 'none';
+  ['orders','availability','suggestions'].forEach(t => {
+    const btn = document.getElementById('staff-tab-' + t);
+    const view = document.getElementById('staff-' + t + '-view');
+    if (btn) btn.classList.toggle('active', tab === t);
+    if (view) view.style.display = tab === t ? 'block' : 'none';
+  });
   if (tab === 'availability') renderAvailabilityPanel();
+  if (tab === 'suggestions') renderSuggestions();
+}
+
+// =================== SUGGESTIONS ===================
+const SUGGESTIONS_KEY = 'bsk_suggestions';
+function _loadSuggestions() {
+  try { return JSON.parse(localStorage.getItem(SUGGESTIONS_KEY) || '[]'); } catch { return []; }
+}
+function _saveSuggestions(list) { localStorage.setItem(SUGGESTIONS_KEY, JSON.stringify(list)); }
+function _esc(t) {
+  return String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function submitSuggestion() {
+  const text = document.getElementById('fb-text').value.trim();
+  const store = document.getElementById('fb-store').value;
+  if (!text) { showToast('Please type your suggestion first'); return; }
+  if (!store) { showToast('Please select your store'); return; }
+  const list = _loadSuggestions();
+  list.unshift({
+    id: Date.now(),
+    name: document.getElementById('fb-name').value.trim(),
+    store,
+    type: document.getElementById('fb-type').value,
+    text,
+    status: 'New',
+    at: new Date().toLocaleString()
+  });
+  _saveSuggestions(list);
+  document.getElementById('fb-text').value = '';
+  document.getElementById('fb-name').value = '';
+  showToast('Thanks! Your suggestion was submitted');
+}
+
+function setSuggestionStatus(id, status) {
+  const list = _loadSuggestions();
+  const item = list.find(x => x.id === id);
+  if (item) item.status = status;
+  _saveSuggestions(list);
+  renderSuggestions();
+}
+
+function deleteSuggestion(id) {
+  if (!confirm('Delete this suggestion?')) return;
+  _saveSuggestions(_loadSuggestions().filter(x => x.id !== id));
+  renderSuggestions();
+}
+
+function copyAllSuggestions() {
+  const txt = _loadSuggestions().map(x =>
+    `[${x.status}] ${x.at} - ${x.store}${x.name ? ' - ' + x.name : ''} - ${x.type}\n${x.text}`).join('\n\n');
+  if (navigator.clipboard) navigator.clipboard.writeText(txt).then(() => showToast('Suggestions copied'));
+}
+
+function renderSuggestions() {
+  const el = document.getElementById('suggestions-body');
+  if (!el) return;
+  const list = _loadSuggestions();
+  if (!list.length) { el.innerHTML = '<div class="empty-state"><h3>No suggestions yet</h3><p>Suggestions submitted on this device will appear here</p></div>'; return; }
+  const statuses = ['New','Planned','Done','Dismissed'];
+  el.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <div style="font-size:13px;color:var(--mid)">${list.length} suggestion${list.length>1?'s':''} on this device</div>
+      <button class="avail-toggle on" onclick="copyAllSuggestions()">Copy All</button></div>` +
+    list.map(x => `<div class="fb-card">
+      <div class="fb-card-meta"><strong>${_esc(x.store)}</strong>${x.name ? ' &middot; ' + _esc(x.name) : ''} &middot; ${_esc(x.type)} &middot; ${_esc(x.at)}</div>
+      <div class="fb-card-text">${_esc(x.text)}</div>
+      <div class="fb-card-actions">
+        ${statuses.map(st => `<button class="avail-toggle ${x.status===st?'on':'off'}" onclick="setSuggestionStatus(${x.id},'${st}')">${st}</button>`).join('')}
+        <button class="avail-toggle off" onclick="deleteSuggestion(${x.id})">Delete</button>
+      </div></div>`).join('');
 }
 
 function renderAvailabilityPanel() {
@@ -4190,8 +4295,8 @@ function applyOverride() {
   } else if (context === 'availability') {
     // ---- MANAGE AVAILABILITY ACCESS ----
     availabilityUnlocked = true;
-    showStaffTab('availability');
-    showToast('Availability panel unlocked');
+    showStaffTab(_pendingStaffTab);
+    showToast('Staff tools unlocked');
 
   } else {
     // ---- LOFT + LIE OVERRIDE ----
