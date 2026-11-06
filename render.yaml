@@ -3,7 +3,7 @@
 services:
   # The kiosk page itself (static, free). Only index.html is published.
   - type: web
-    name: 2ndswing-buildshop
+    name: buildshop-2ndswing
     runtime: static
     buildCommand: mkdir -p public && cp index.html public/
     staticPublishPath: ./public
@@ -24,7 +24,7 @@ services:
       - key: BSK_DATA_DIR
         value: /var/data
       - key: BSK_ALLOWED_ORIGINS
-        value: https://2ndswing-buildshop.onrender.com,https://hschatteles.github.io
+        value: https://buildshop-2ndswing.onrender.com,https://hschatteles.github.io
       - key: BSK_STORE_PIN
         sync: false
       - key: BSK_REGIONAL_PIN
