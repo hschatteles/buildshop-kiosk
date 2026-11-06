@@ -1,0 +1,23 @@
+# Build Shop Kiosk API on Render. Secret values are NOT in this file:
+# you type BSK_STORE_PIN and BSK_REGIONAL_PIN into Render's Environment tab.
+services:
+  - type: web
+    name: buildshop-kiosk-api
+    runtime: node
+    plan: starter
+    buildCommand: echo "no build step"
+    startCommand: node server/server.js
+    healthCheckPath: /health
+    disk:
+      name: bsk-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: BSK_DATA_DIR
+        value: /var/data
+      - key: BSK_ALLOWED_ORIGINS
+        value: https://hschatteles.github.io
+      - key: BSK_STORE_PIN
+        sync: false
+      - key: BSK_REGIONAL_PIN
+        sync: false
