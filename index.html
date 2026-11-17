@@ -1078,6 +1078,12 @@ textarea { resize: vertical; min-height: 70px; }
   outline: none;
 }
 .grip-modal-search input:focus { border-color: var(--red); }
+.grip-scan-row { display:flex; align-items:center; gap:10px; }
+.grip-scan-icon { flex:none; width:40px; height:40px; border-radius:6px; background:var(--black); color:var(--white); display:flex; align-items:center; justify-content:center; }
+.grip-scan-row input { font-size:16px !important; padding:10px 12px !important; }
+.grip-scan-hint { font-size:12px; color:var(--gray8); margin-top:6px; }
+.grip-scan-msg { display:none; margin-top:8px; padding:8px 12px; border-radius:6px; font-size:14px; font-weight:600; background:rgba(183,28,28,0.08); color:var(--red); border:1px solid rgba(183,28,28,0.3); }
+.grip-scan-msg.show { display:block; }
 .grip-modal-body {
   overflow-y: auto;
   flex: 1;
@@ -1687,7 +1693,12 @@ textarea { resize: vertical; min-height: 70px; }
       <button onclick="closeGripPicker()" style="background:none;border:none;color:var(--mid);font-size:22px;cursor:pointer;line-height:1">&#x2715;</button>
     </div>
     <div class="grip-modal-search">
-      <input type="text" id="grip-search-input" placeholder="Search grips by name or SKU..." oninput="filterGripCards()">
+      <div class="grip-scan-row">
+        <div class="grip-scan-icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7V4h3M21 7V4h-3M3 17v3h3M21 17v3h-3"/><path d="M7 8v8M10 8v8M13 8v8M16 8v8"/></svg></div>
+        <input type="text" id="grip-search-input" placeholder="Scan a grip SKU, or type a name to search" autocomplete="off" oninput="filterGripCards()" onkeydown="gripScanKey(event)">
+      </div>
+      <div class="grip-scan-hint">Scanner ready — scan the grip's SKU barcode to select it, or browse below.</div>
+      <div class="grip-scan-msg" id="grip-scan-msg"></div>
     </div>
     <div class="grip-modal-body" id="grip-cards-container"></div>
   </div>
@@ -3832,6 +3843,7 @@ function openGripPicker(rowId, prefix) {
   const clubType = document.getElementById(`cs-type-${csId}`)?.value || '';
   _pickerIsPutter = (clubType === 'Putter');
   document.getElementById('grip-search-input').value = '';
+  gripScanMsg('');
   renderGripCards('');
   document.getElementById('grip-picker-overlay').classList.remove('hidden');
   setTimeout(() => document.getElementById('grip-search-input').focus(), 100);
@@ -3841,8 +3853,59 @@ function closeGripPicker() {
   document.getElementById('grip-picker-overlay').classList.add('hidden');
 }
 
+let _gripScanTimer = null;
 function filterGripCards() {
-  renderGripCards(document.getElementById('grip-search-input').value);
+  const v = document.getElementById('grip-search-input').value;
+  gripScanMsg('');
+  renderGripCards(v);
+  // A scanner that doesn't send Enter: select once a full SKU sits in the box for a moment
+  clearTimeout(_gripScanTimer);
+  if (gripFindBySku(v)) _gripScanTimer = setTimeout(() => gripScanSubmit(true), 350);
+}
+
+function gripNormSku(v) { return String(v || '').trim().toUpperCase().replace(/\s+/g, ''); }
+
+function gripFindBySku(v) {
+  const code = gripNormSku(v);
+  if (!code) return null;
+  for (const m of GRIP_MODELS) {
+    const size = m.sizes.find(sz => gripNormSku(sz.sku) === code);
+    if (size) return { model: m, size };
+  }
+  return null;
+}
+
+function gripScanMsg(text) {
+  const el = document.getElementById('grip-scan-msg');
+  if (!el) return;
+  el.textContent = text;
+  el.classList.toggle('show', !!text);
+}
+
+function gripScanKey(e) {
+  if (e.key !== 'Enter') return;
+  e.preventDefault();
+  gripScanSubmit(false);
+}
+
+function gripScanSubmit(quiet) {
+  clearTimeout(_gripScanTimer);
+  const input = document.getElementById('grip-search-input');
+  const raw = input.value;
+  if (!gripNormSku(raw)) return;
+  const hit = gripFindBySku(raw);
+  if (!hit) {
+    if (quiet) return;
+    const visible = document.querySelectorAll('#grip-cards-container .grip-card').length;
+    if (!visible) gripScanMsg('SKU ' + gripNormSku(raw) + ' isn\'t in the grip list. Check the tag, or search by name below.');
+    return;
+  }
+  const { model, size } = hit;
+  if (UNAVAILABLE_GRIPS.has(model.id)) { gripScanMsg(model.name + ' is marked unavailable at this store.'); input.select(); return; }
+  const isPutterModel = model.category === 'putter';
+  if (isPutterModel && !_pickerIsPutter) { gripScanMsg(model.name + ' is a putter grip. Set this club to Putter first, or scan a different grip.'); input.select(); return; }
+  if (!isPutterModel && _pickerIsPutter) { gripScanMsg(model.name + ' isn\'t a putter grip, and this club is a putter. Scan a putter grip instead.'); input.select(); return; }
+  selectGrip(model.name + ' ' + size.label, size.price, size.sku);
 }
 
 function renderGripCards(query) {
