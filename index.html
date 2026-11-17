@@ -42,7 +42,7 @@
      UI colors rather than brand red/slate. */
   --gold: #c9a227;
   --blue: var(--slate);
-  --green: var(--green);
+  --green: #2D7A4F;  /* functional success color (outside brand palette) */
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -581,6 +581,27 @@ textarea { resize: vertical; min-height: 70px; }
 }
 .btn-submit:hover { background: var(--red-dark); }
 .btn-submit:disabled { background: var(--gray3); cursor: not-allowed; }
+
+/* ===== STEP 1 GUIDE + START BAR ===== */
+.order-guide { display:flex; gap:12px; margin: -8px 0 24px; }
+.order-guide-step { flex:1; display:flex; align-items:center; gap:12px; background:var(--white); border:2px solid var(--gray2); border-radius:8px; padding:14px 16px; transition: border-color .2s, background .2s; }
+.order-guide-step .g-num { flex:none; width:34px; height:34px; border-radius:50%; background:var(--black); color:var(--white); display:flex; align-items:center; justify-content:center; font-family:'Oswald',sans-serif; font-weight:700; font-size:18px; transition: background .2s; }
+.order-guide-step .g-title { font-family:'Oswald',sans-serif; font-weight:700; font-size:17px; text-transform:uppercase; letter-spacing:.5px; color:var(--black); }
+.order-guide-step .g-sub { font-size:14px; color:var(--gray8); margin-top:2px; }
+.order-guide-step.current { border-color:var(--red); background:rgba(183,28,28,0.04); }
+.order-guide-step.current .g-num { background:var(--red); }
+.order-guide-step.complete .g-num { background:var(--green); }
+#section-services { padding-bottom: 110px; }
+.start-bar { position:fixed; left:0; right:0; bottom:0; z-index:50; background:var(--black); box-shadow:0 -4px 16px rgba(0,0,0,0.25); }
+.start-bar-inner { max-width:860px; margin:0 auto; padding:14px 20px; display:flex; align-items:center; gap:16px; }
+.start-bar-status { flex:1; color:var(--white); font-family:'Rajdhani',sans-serif; font-size:17px; font-weight:600; line-height:1.25; }
+.start-bar-status strong { font-family:'Oswald',sans-serif; font-weight:700; font-size:20px; letter-spacing:.5px; text-transform:uppercase; display:block; }
+.start-bar-status .hint { color:var(--gray4); }
+.start-bar .btn-submit { width:auto; flex:none; padding:16px 32px; }
+.start-bar .btn-submit:disabled { background:var(--gray9); color:var(--gray5); }
+.start-bar .btn-submit.ready { animation: startPulse 1.6s ease-out 2; }
+@keyframes startPulse { 0%{box-shadow:0 0 0 0 rgba(183,28,28,.7)} 100%{box-shadow:0 0 0 16px rgba(183,28,28,0)} }
+@media (max-width:600px){ .order-guide{flex-direction:column} .start-bar .btn-submit{padding:14px 18px;font-size:17px} }
 
 /* ===== RECEIPT MODAL ===== */
 .modal-overlay {
@@ -1306,6 +1327,17 @@ textarea { resize: vertical; min-height: 70px; }
     <!-- STEP 1: Service Selection -->
     <div id="section-services" class="service-selection-section">
 
+      <div class="order-guide">
+        <div class="order-guide-step current" id="guide-1">
+          <div class="g-num">1</div>
+          <div><div class="g-title">Choose your services</div><div class="g-sub">Tap every service you need below</div></div>
+        </div>
+        <div class="order-guide-step" id="guide-2">
+          <div class="g-num">2</div>
+          <div><div class="g-title">Start your order</div><div class="g-sub">Tap the red button at the bottom of the screen</div></div>
+        </div>
+      </div>
+
       <!-- BASIC -->
       <div class="service-tier">
         <div class="tier-header">
@@ -1465,9 +1497,12 @@ textarea { resize: vertical; min-height: 70px; }
         Some Expert and Tour repair services may take up to 5 business days. A staff member will confirm the timeline with you at check-in.
       </div>
 
-      <button class="btn-submit" id="btn-next-details" onclick="goToDetails()" disabled>
-        Continue to Order Details →
-      </button>
+      <div class="start-bar">
+        <div class="start-bar-inner">
+          <div class="start-bar-status" id="start-bar-status"><strong>No services selected</strong><span class="hint">Tap a service above to begin</span></div>
+          <button class="btn-submit" id="btn-next-details" onclick="goToDetails()" disabled>Start Your Order →</button>
+        </div>
+      </div>
     </div>
 
     <!-- STEP 2: Service Details -->
@@ -2104,8 +2139,7 @@ function applyServiceAvailabilityUI() {
       card.classList.remove('service-unavailable');
     }
   });
-  const btn = document.getElementById('btn-next-details');
-  if (btn) btn.disabled = Object.keys(SERVICES).length === 0;
+  updateStartBar();
 }
 
 let availabilityUnlocked = false;
@@ -2549,8 +2583,33 @@ function toggleService(id, name, price, tier, flag) {
     SERVICES[id] = { id, name, price, tier, perclub: flag === 'perclub', qty: 1 };
     card.classList.add('selected');
   }
+  updateStartBar();
+}
+
+function updateStartBar() {
   const btn = document.getElementById('btn-next-details');
-  btn.disabled = Object.keys(SERVICES).length === 0;
+  if (!btn) return;
+  const list = Object.values(SERVICES);
+  const n = list.length;
+  const wasDisabled = btn.disabled;
+  btn.disabled = n === 0;
+  if (n > 0 && wasDisabled) { btn.classList.remove('ready'); void btn.offsetWidth; btn.classList.add('ready'); }
+  if (n === 0) btn.classList.remove('ready');
+  const status = document.getElementById('start-bar-status');
+  if (status) {
+    if (n === 0) {
+      status.innerHTML = '<strong>No services selected</strong><span class="hint">Tap a service above to begin</span>';
+    } else {
+      const names = list.map(s => s.name).join(', ');
+      status.innerHTML = '<strong>' + n + ' service' + (n === 1 ? '' : 's') + ' selected</strong><span class="hint"></span>';
+      status.querySelector('.hint').textContent = names;
+    }
+  }
+  const g1 = document.getElementById('guide-1'), g2 = document.getElementById('guide-2');
+  if (g1 && g2) {
+    g1.classList.toggle('current', n === 0); g1.classList.toggle('complete', n > 0);
+    g2.classList.toggle('current', n > 0);
+  }
 }
 
 function goToDetails() {
@@ -2574,6 +2633,7 @@ function goBack(from) {
     document.getElementById('section-details').style.display = 'none';
     document.getElementById('section-services').style.display = 'block';
     setStep(1);
+    updateStartBar();
   } else if (from === 'info') {
     document.getElementById('section-info').style.display = 'none';
     document.getElementById('section-details').style.display = 'block';
@@ -3391,7 +3451,7 @@ function removeServiceFromDetail(id) {
     document.getElementById('section-details').style.display = 'none';
     document.getElementById('section-services').style.display = 'block';
     setStep(1);
-    document.getElementById('btn-next-details').disabled = true;
+    updateStartBar();
   }
 }
 
@@ -4154,7 +4214,7 @@ function closeReceipt() {
   document.getElementById('section-info').style.display = 'none';
   document.getElementById('section-details').style.display = 'none';
   document.getElementById('section-services').style.display = 'block';
-  document.getElementById('btn-next-details').disabled = true;
+  updateStartBar();
   ['fname','lname','phone','email','ordernotes'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
   const go = document.getElementById('grip-clubs-overview');
   if (go) go.innerHTML = '';
