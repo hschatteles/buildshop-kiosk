@@ -837,6 +837,16 @@ textarea { resize: vertical; min-height: 70px; }
 .action-btn.advance:hover { background: var(--red-dark); }
 .action-btn.call:hover { border-color: #28a745; color: #28a745; }
 .action-btn.text:hover { border-color: var(--blue); color: var(--blue); }
+.filter-btn.push-right { margin-left: auto; }
+.paid-check { display:inline-flex; align-items:center; gap:6px; cursor:pointer; font-family:'Oswald',sans-serif; font-weight:700; font-size:12px; text-transform:uppercase; letter-spacing:.5px; color:var(--gray8); padding:4px 10px; border:1.5px solid var(--gray2); border-radius:20px; background:var(--white); user-select:none; white-space:nowrap; }
+.paid-check input { width:16px; height:16px; accent-color: var(--green); cursor:pointer; margin:0; }
+.paid-check.is-paid { color: var(--green); border-color: var(--green); background: rgba(45,122,79,0.06); }
+.notify-row { display:flex; align-items:center; gap:6px; margin-top:6px; flex-wrap:wrap; }
+.notify-label { font-size:11px; font-weight:700; color:var(--gray8); text-transform:uppercase; letter-spacing:.4px; }
+.notify-btn { font-family:'Oswald',sans-serif; font-weight:700; font-size:11px; text-transform:uppercase; letter-spacing:.4px; padding:3px 9px; border-radius:12px; border:1.5px solid var(--gray3); background:var(--white); color:var(--gray9); cursor:pointer; }
+.notify-btn:hover { border-color: var(--green); color: var(--green); }
+.notify-done { font-size:12px; font-weight:700; color: var(--green); }
+.notify-done button { background:none; border:none; color:var(--gray7); font-size:11px; text-decoration:underline; cursor:pointer; padding:0 0 0 4px; }
 
 /* Detail modal */
 .detail-modal {
@@ -1623,12 +1633,12 @@ textarea { resize: vertical; min-height: 70px; }
     <button class="filter-btn" id="staff-tab-suggestions" onclick="showStaffTab('suggestions')">Suggestions</button>
   </div>
   <div id="staff-orders-view">
-    <div class="dashboard-filters">
-      <button class="filter-btn active" onclick="filterOrders('all',this)">All Orders</button>
-      <button class="filter-btn" onclick="filterOrders('pending',this)">Pending</button>
+    <div class="dashboard-filters" id="order-filters">
+      <button class="filter-btn active" onclick="filterOrders('pending',this)">Pending</button>
       <button class="filter-btn" onclick="filterOrders('in-progress',this)">In Progress</button>
       <button class="filter-btn" onclick="filterOrders('ready',this)">Ready for Pickup</button>
       <button class="filter-btn" onclick="filterOrders('completed',this)">Completed</button>
+      <button class="filter-btn push-right" onclick="filterOrders('all',this)">All Orders</button>
     </div>
     <div class="dashboard-body">
       <table class="order-table">
@@ -1639,11 +1649,12 @@ textarea { resize: vertical; min-height: 70px; }
             <th>Services</th>
             <th>Time</th>
             <th>Status</th>
+            <th>Paid</th>
             <th>Actions</th>
           </tr>
         </thead>
         <tbody id="orders-tbody">
-          <tr><td colspan="6"><div class="empty-state"><h3>No Orders Yet</h3><p>Customer orders will appear here</p></div></td></tr>
+          <tr><td colspan="7"><div class="empty-state"><h3>No Orders Yet</h3><p>Customer orders will appear here</p></div></td></tr>
         </tbody>
       </table>
     </div>
@@ -2903,7 +2914,8 @@ const REGRIP_LABOR = 4;
 
 const SERVICES = {}; // selected services: id -> {id, name, price, tier, perclub}
 let orders = JSON.parse(localStorage.getItem('buildshop_orders') || '[]');
-let currentFilter = 'all';
+let currentFilter = 'pending';
+let _lastOrderId = null;
 
 // ====================== SCREEN NAV ======================
 function showScreen(s) {
@@ -4529,6 +4541,7 @@ function submitOrder() {
   };
 
   orders.unshift(order);
+  _lastOrderId = order.id;
   localStorage.setItem('buildshop_orders', JSON.stringify(orders));
   showReceipt(order);
 }
@@ -4601,6 +4614,7 @@ function showReceipt(order) {
 
 function handlePrint() {
   window.print();
+  if (_lastOrderId) markPrintedInProgress(_lastOrderId);
   // After print dialog closes, swap to finish button
   setTimeout(() => {
     document.getElementById('receipt-footer').classList.add('hidden');
@@ -4652,7 +4666,7 @@ function renderDashboard() {
   document.getElementById('stat-done').textContent = counts.completed;
 
   if (filtered.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="6"><div class="empty-state"><h3>No Orders</h3><p>No orders match this filter</p></div></td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="7"><div class="empty-state"><h3>No Orders</h3><p>No orders match this filter</p></div></td></tr>`;
     return;
   }
 
@@ -4678,7 +4692,9 @@ function renderDashboard() {
           style="font-family:'Rajdhani',sans-serif;font-size:12px;font-weight:700;padding:4px 8px;border-radius:4px;border:2px solid;cursor:pointer;outline:none">
           ${statusOptions}
         </select>
+        ${o.status === 'ready' ? notifyHTML(o) : ''}
       </td>
+      <td>${paidHTML(o)}</td>
       <td>
         <div class="action-btns">
           <button class="action-btn call" onclick="window.location='tel:${o.customer.phone}'">📞</button>
@@ -4699,7 +4715,9 @@ function setOrderStatus(id, newStatus, selectEl) {
 
   order.status = newStatus;
   order.timeline.push({ status: statusLabel[newStatus], time: new Date().toISOString() });
-  localStorage.setItem('buildshop_orders', JSON.stringify(orders));
+  saveOrders();
+  if (selectEl && selectEl.closest('#orders-tbody')) { renderDashboard(); }
+  if (document.getElementById('detail-notify-' + id)) { document.getElementById('detail-notify-' + id).innerHTML = newStatus === 'ready' ? notifyHTML(order) : ''; }
 
   // Recolor the dropdown immediately without full re-render
   if (selectEl) {
@@ -4731,7 +4749,7 @@ function refreshDetailTimeline(id) {
 
 function filterOrders(f, btn) {
   currentFilter = f;
-  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('#order-filters .filter-btn').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
   renderDashboard();
 }
@@ -4762,6 +4780,10 @@ function showOrderDetail(id) {
       style="font-family:'Rajdhani',sans-serif;font-size:13px;font-weight:700;padding:5px 10px;border-radius:5px;border:2px solid;cursor:pointer;outline:none;min-width:170px">
       ${statusOptions}
     </select>
+  </div>
+  <div style="padding:10px 20px;display:flex;align-items:center;justify-content:space-between;gap:12px;border-bottom:1px solid var(--gray2);flex-wrap:wrap">
+    <div id="detail-paid-${order.id}">${paidHTML(order)}</div>
+    <div id="detail-notify-${order.id}">${order.status === 'ready' ? notifyHTML(order) : ''}</div>
   </div>
   <div class="detail-body">
     <div class="detail-section">
@@ -4824,11 +4846,88 @@ function showOrderDetail(id) {
   document.getElementById('detail-overlay').classList.remove('hidden');
 }
 
+function saveOrders() {
+  try { localStorage.setItem('buildshop_orders', JSON.stringify(orders)); } catch (e) {}
+}
+
+function _fmtClock(iso) {
+  return new Date(iso).toLocaleString([], { month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+}
+
+// Paid: a checkbox staff tick when the guest pays; logged on the order's timeline
+function paidHTML(o) {
+  return `<label class="paid-check ${o.paid ? 'is-paid' : ''}" title="${o.paid && o.paidAt ? 'Marked paid ' + _fmtClock(o.paidAt) : 'Tick when paid'}">
+    <input type="checkbox" ${o.paid ? 'checked' : ''} onchange="setOrderPaid('${o.id}', this.checked)"> ${o.paid ? 'Paid' : 'Unpaid'}</label>`;
+}
+
+function setOrderPaid(id, paid) {
+  const order = orders.find(o => o.id === id);
+  if (!order) return;
+  order.paid = !!paid;
+  order.paidAt = paid ? new Date().toISOString() : null;
+  order.timeline.push({ status: paid ? 'Marked Paid' : 'Marked Unpaid', time: new Date().toISOString() });
+  saveOrders();
+  renderDashboard();
+  const dp = document.getElementById('detail-paid-' + id);
+  if (dp) dp.innerHTML = paidHTML(order);
+  refreshDetailTimeline(id);
+  showToast(`Order ${id} marked ${paid ? 'paid' : 'unpaid'}`);
+}
+
+// Ready for pickup: record how the customer was told (called or texted)
+function notifyHTML(o) {
+  if (o.notified) {
+    return `<div class="notify-row"><span class="notify-done">✓ ${o.notified.via === 'call' ? 'Called' : 'Texted'} ${_fmtClock(o.notified.at)}</span><button class="notify-btn" style="border:none;padding:0;background:none;color:var(--gray7);text-decoration:underline;text-transform:none;font-family:inherit;font-weight:600" onclick="clearNotified('${o.id}')">undo</button></div>`;
+  }
+  return `<div class="notify-row"><span class="notify-label">Customer told?</span>
+    <button class="notify-btn" onclick="markNotified('${o.id}','call')">📞 Called</button>
+    <button class="notify-btn" onclick="markNotified('${o.id}','text')">💬 Texted</button></div>`;
+}
+
+function markNotified(id, via) {
+  const order = orders.find(o => o.id === id);
+  if (!order) return;
+  order.notified = { via, at: new Date().toISOString() };
+  order.timeline.push({ status: via === 'call' ? 'Customer Called — Ready for Pickup' : 'Customer Texted — Ready for Pickup', time: order.notified.at });
+  saveOrders();
+  renderDashboard();
+  const dn = document.getElementById('detail-notify-' + id);
+  if (dn) dn.innerHTML = notifyHTML(order);
+  refreshDetailTimeline(id);
+  showToast(`Order ${id}: customer ${via === 'call' ? 'called' : 'texted'}`);
+}
+
+function clearNotified(id) {
+  const order = orders.find(o => o.id === id);
+  if (!order || !order.notified) return;
+  order.notified = null;
+  order.timeline.push({ status: 'Customer Contact Undone', time: new Date().toISOString() });
+  saveOrders();
+  renderDashboard();
+  const dn = document.getElementById('detail-notify-' + id);
+  if (dn) dn.innerHTML = notifyHTML(order);
+  refreshDetailTimeline(id);
+}
+
+// Printing a pending order means it's been handed to the shop: move it to In Progress
+function markPrintedInProgress(id) {
+  const order = orders.find(o => o.id === id);
+  if (!order) return;
+  order.printedAt = order.printedAt || new Date().toISOString();
+  if (order.status === 'pending') {
+    order.status = 'in-progress';
+    order.timeline.push({ status: 'Printed — In Progress', time: new Date().toISOString() });
+  }
+  saveOrders();
+  if (typeof renderDashboard === 'function' && document.getElementById('orders-tbody')) renderDashboard();
+}
+
 function printOrder(id) {
   const order = orders.find(o => o.id === id);
   if (!order) return;
   showToast('Printing order ' + id + '...');
   window.print();
+  markPrintedInProgress(id);
 }
 
 function showToast(msg) {
