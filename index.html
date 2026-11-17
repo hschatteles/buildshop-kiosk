@@ -1546,8 +1546,8 @@ textarea { resize: vertical; min-height: 70px; }
           <div class="form-field">
             <label class="form-label">Preferred Contact</label>
             <select id="contactpref">
+              <option value="text" selected>Text</option>
               <option value="call">Call</option>
-              <option value="text">Text</option>
               <option value="email">Email</option>
             </select>
           </div>
@@ -4518,7 +4518,7 @@ function submitOrder() {
       name: fname + ' ' + lname,
       phone: document.getElementById('phone').value,
       email: document.getElementById('email')?.value || '',
-      contactPref: document.getElementById('contactpref')?.value || 'call',
+      contactPref: document.getElementById('contactpref')?.value || 'text',
       dropType: document.getElementById('droptype')?.value || 'dropin'
     },
     services: Object.values(SERVICES),
@@ -4621,6 +4621,7 @@ function closeReceipt() {
   document.getElementById('section-services').style.display = 'block';
   updateStartBar();
   ['fname','lname','phone','email','ordernotes'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  { const cp = document.getElementById('contactpref'); if (cp) cp.value = 'text'; }
   const go = document.getElementById('grip-clubs-overview');
   if (go) go.innerHTML = '';
   const gp = document.getElementById('grip-pills');
